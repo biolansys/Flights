@@ -1,11 +1,19 @@
 # Air Trip Admin
 
-A Textual-based terminal app for managing airplane trips in Python.
+Airplane trip management in Python with:
+- a Textual TUI
+- a PySide6 desktop GUI
 
-## Run
+## Run The TUI
 
 ```bash
 python app.py
+```
+
+## Run The GUI
+
+```bash
+python gui_app.py
 ```
 
 ## Features
@@ -13,11 +21,12 @@ python app.py
 - Left-side list of trips
 - Right-side tabbed trip details
 - Create, edit, delete, and search trips
+- Duplicate trips
+- Select app language: English, Spanish, German
 - Query live flight status from the internet
 - Store ticket details
 - Track required documentation
-- Record transport to and from the airport
-- Record home-to-airport and airport-to-home scheduled times
+- Record timing buffers and estimate a safe leave-home time
 - Maintain packing lists for clothes, electronics, health items, documents, and other items
 
 ## Shortcuts
@@ -38,12 +47,12 @@ Trip data is stored in `trips.db` next to `app.py`.
 
 Use `YYYY-MM-DD HH:MM`
 
-## Dependency
+## Dependencies
 
-Install Textual if needed:
+Install the app dependencies:
 
 ```bash
-pip install textual
+pip install -r requirements.txt
 ```
 
 ## Live Flight Status
