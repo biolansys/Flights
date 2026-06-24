@@ -25,6 +25,8 @@ python web_app.py
 
 Then open `http://127.0.0.1:8000`.
 
+On Windows you can also double-click `web.bat`.
+
 ## Features
 
 - Left-side list of trips
