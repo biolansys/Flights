@@ -3,6 +3,7 @@
 Airplane trip management in Python with:
 - a Textual TUI
 - a PySide6 desktop GUI
+- a local FastAPI web app
 
 ## Run The TUI
 
@@ -15,6 +16,14 @@ python app.py
 ```bash
 python gui_app.py
 ```
+
+## Run The Web App
+
+```bash
+python web_app.py
+```
+
+Then open `http://127.0.0.1:8000`.
 
 ## Features
 
@@ -31,6 +40,7 @@ python gui_app.py
 - Maintain packing lists for clothes, electronics, health items, documents, and other items
 - Store a dynamic list of useful links of interest for each trip
 - Show a grouped trip summary with sections for overview, ticket, docs, timing, packing, checklist, and links
+- Web app shares the same SQLite data and trip calculations
 
 ## Shortcuts
 

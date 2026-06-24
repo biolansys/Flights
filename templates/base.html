@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Air Trip Admin Web</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --bg-2: #e4ebf4;
+      --panel: rgba(255, 255, 255, 0.88);
+      --panel-strong: #fffdf9;
+      --ink: #24201c;
+      --muted: #6f655b;
+      --accent: #8a4b2f;
+      --accent-2: #36516f;
+      --line: rgba(98, 76, 54, 0.18);
+      --shadow: 0 18px 50px rgba(37, 31, 24, 0.12);
+      --radius: 18px;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,0.7), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(184, 208, 232, 0.65), transparent 30%),
+        linear-gradient(135deg, var(--bg), var(--bg-2));
+      min-height: 100vh;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .shell {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px 0 20px;
+    }
+    .brand {
+      display: grid;
+      gap: 4px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      letter-spacing: 0.02em;
+      font-size: 1.85rem;
+    }
+    .brand .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #f3ece3);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.7rem 1rem;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+    .btn.primary { background: linear-gradient(180deg, #d17b4f, #a9582e); color: white; }
+    .btn.danger { background: linear-gradient(180deg, #b43d3d, #7f2424); color: white; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel h2, .panel h3 {
+      margin: 0;
+      padding: 16px 18px;
+      background: rgba(255,255,255,0.42);
+      border-bottom: 1px solid var(--line);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    .panel .body { padding: 18px; }
+    .notice {
+      margin: 0 18px 12px;
+      padding: 12px 14px;
+      border: 1px solid rgba(56, 97, 143, 0.22);
+      background: rgba(227, 237, 247, 0.9);
+      border-radius: 14px;
+      color: #25405c;
+      font-weight: 700;
+    }
+    .error-box {
+      margin: 0 0 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 237, 237, 0.95);
+      border: 1px solid rgba(174, 73, 73, 0.25);
+      color: #8e2828;
+    }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    .field label {
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.78rem 0.9rem;
+      background: #fffdf9;
+      color: var(--ink);
+      font: inherit;
+    }
+    .field textarea { min-height: 120px; resize: vertical; }
+    .section-list {
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+      overflow: hidden;
+    }
+    .card h3 { padding: 14px 16px; }
+    table.details {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table.details th, table.details td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+    }
+    table.details th {
+      width: 34%;
+      color: var(--accent);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+    .sidebar {
+      display: grid;
+      gap: 14px;
+      align-self: start;
+      position: sticky;
+      top: 18px;
+    }
+    .trip-list {
+      display: grid;
+      gap: 10px;
+    }
+    .trip-item {
+      display: block;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.92);
+    }
+    .trip-item.active {
+      border-color: rgba(138, 75, 47, 0.4);
+      box-shadow: 0 0 0 2px rgba(138, 75, 47, 0.08) inset;
+    }
+    .trip-item .title { font-weight: 800; display: block; margin-bottom: 4px; }
+    .trip-item .meta { color: var(--muted); font-size: 0.9rem; }
+    .muted { color: var(--muted); }
+    .row-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .dynamic-list { display: grid; gap: 10px; }
+    .dyn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(245, 240, 232, 0.9);
+      border: 1px solid var(--line);
+    }
+    .dyn-row.links { grid-template-columns: 1fr 1fr auto; }
+    .dyn-row.checklist { grid-template-columns: 1fr auto auto; }
+    .dyn-row input[type="text"], .dyn-row input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+      background: #fffdf9;
+      font: inherit;
+    }
+    .dyn-row .small-btn {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0.65rem 0.85rem;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .links-card .dyn-row { grid-template-columns: 1fr 2fr auto; }
+    .checkbox-wrap { display: flex; align-items: center; gap: 8px; }
+    .footer-note { color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 980px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+    }
+    @media (max-width: 640px) {
+      .topbar { flex-direction: column; align-items: flex-start; }
+      .actions { width: 100%; }
+      .dyn-row, .dyn-row.links, .dyn-row.checklist { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <h1>Air Trip Admin</h1>
+      <div class="sub">Local web edition for one-user trip planning</div>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="/trip/new">{{ t_new }}</a>
+      <a class="btn" href="/">{{ t_refresh }}</a>
+    </div>
+  </div>
+  {% if notice %}
+    <div class="notice">{{ notice }}</div>
+  {% endif %}
+  {% block body %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="shell" style="grid-template-columns: 1fr;">
+  <main class="panel">
+    <h2>{{ form_title }}</h2>
+    <div class="body">
+      {% if errors %}
+        <div class="error-box">
+          <strong>{{ t_fix_errors }}</strong>
+          <ul>
+            {% for error in errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      <form method="post" action="{% if trip.id %}/trip/{{ trip.id }}{% else %}/trip{% endif %}">
+        <div class="field-grid">
+          <div class="field">
+            <label>{{ t_trip_title }}</label>
+            <input type="text" name="title" value="{{ trip.title }}">
+          </div>
+          <div class="field">
+            <label>{{ t_departure_airport }}</label>
+            <input type="text" name="departure_airport" value="{{ trip.departure_airport }}">
+          </div>
+          <div class="field">
+            <label>{{ t_arrival_airport }}</label>
+            <input type="text" name="arrival_airport" value="{{ trip.arrival_airport }}">
+          </div>
+          <div class="field">
+            <label>{{ t_departure_datetime }}</label>
+            <input type="text" name="departure_datetime" value="{{ trip.departure_datetime }}" placeholder="YYYY-MM-DD HH:MM">
+          </div>
+          <div class="field">
+            <label>{{ t_flight_arrival_time }}</label>
+            <input type="text" name="flight_arrival_time" value="{{ trip.flight_arrival_time }}" placeholder="YYYY-MM-DD HH:MM">
+          </div>
+        </div>
+
+        <div class="field-grid" style="margin-top: 16px;">
+          <div class="field">
+            <label>{{ t_passenger_name }}</label>
+            <input type="text" name="passenger_name" value="{{ trip.passenger_name }}">
+          </div>
+          <div class="field">
+            <label>{{ t_airline_code }}</label>
+            <input type="text" name="airline_code" value="{{ trip.airline_code }}">
+          </div>
+          <div class="field">
+            <label>{{ t_flight_number }}</label>
+            <input type="text" name="flight_number" value="{{ trip.flight_number }}">
+          </div>
+          <div class="field">
+            <label>{{ t_airline }}</label>
+            <input type="text" name="airline" value="{{ trip.airline }}">
+          </div>
+          <div class="field">
+            <label>{{ t_booking_reference }}</label>
+            <input type="text" name="booking_reference" value="{{ trip.booking_reference }}">
+          </div>
+          <div class="field">
+            <label>{{ t_ticket_number }}</label>
+            <input type="text" name="ticket_number" value="{{ trip.ticket_number }}">
+          </div>
+          <div class="field">
+            <label>{{ t_ticket_cost }}</label>
+            <input type="text" name="ticket_cost" value="{{ trip.ticket_cost }}">
+          </div>
+          <div class="field">
+            <label>{{ t_seat }}</label>
+            <input type="text" name="seat" value="{{ trip.seat }}">
+          </div>
+          <div class="field">
+            <label>{{ t_cabin_class }}</label>
+            <input type="text" name="cabin_class" value="{{ trip.cabin_class }}">
+          </div>
+          <div class="field">
+            <label>{{ t_checkin_done }}</label>
+            <div class="checkbox-wrap">
+              <input type="checkbox" name="checkin_done" value="1" {% if trip.checkin_done %}checked{% endif %}>
+              <span class="muted">{{ t_done }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top: 16px;">
+          <label>{{ t_ticket_notes }}</label>
+          <textarea name="ticket_notes">{{ trip.ticket_notes }}</textarea>
+        </div>
+
+        <div class="field-grid" style="margin-top: 16px;">
+          <div class="field">
+            <label>{{ t_documentation_required }}</label>
+            <textarea name="documentation_required">{{ trip.documentation_required|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_documents_to_carry }}</label>
+            <textarea name="documents_to_carry">{{ trip.documents_to_carry|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_clothes_items }}</label>
+            <textarea name="clothes_items">{{ trip.clothes_items|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_electronics_items }}</label>
+            <textarea name="electronics_items">{{ trip.electronics_items|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_health_items }}</label>
+            <textarea name="health_items">{{ trip.health_items|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_other_items }}</label>
+            <textarea name="other_items">{{ trip.other_items|join('\n') }}</textarea>
+          </div>
+          <div class="field">
+            <label>{{ t_general_notes }}</label>
+            <textarea name="general_notes">{{ trip.general_notes }}</textarea>
+          </div>
+        </div>
+
+        <section class="card" style="margin-top: 16px;">
+          <h3>{{ t_timing_steps }}</h3>
+          <div class="body">
+            <div class="muted" style="margin-bottom: 12px;">{{ t_timing_hint }}</div>
+            <div id="timing-container" class="dynamic-list">
+              {% for step in timing_steps %}
+                <div class="dyn-row timing">
+                  <input type="text" name="timing_name" value="{{ step.name }}" placeholder="{{ t_step_name }}">
+                  <input type="number" name="timing_minutes" value="{{ step.minutes }}" placeholder="{{ t_step_minutes }}">
+                  <input type="text" name="timing_cost" value="{{ step.cost }}" placeholder="{{ t_step_cost }}">
+                  <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+                </div>
+              {% endfor %}
+            </div>
+            <div style="margin-top: 10px;">
+              <button type="button" class="btn" onclick="addTimingRow()">{{ t_add_row }}</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" style="margin-top: 16px;">
+          <h3>{{ t_arrival_timing_steps }}</h3>
+          <div class="body">
+            <div class="muted" style="margin-bottom: 12px;">{{ t_arrival_timing_hint }}</div>
+            <div id="arrival-container" class="dynamic-list">
+              {% for step in arrival_timing_steps %}
+                <div class="dyn-row timing">
+                  <input type="text" name="arrival_name" value="{{ step.name }}" placeholder="{{ t_step_name }}">
+                  <input type="number" name="arrival_minutes" value="{{ step.minutes }}" placeholder="{{ t_step_minutes }}">
+                  <input type="text" name="arrival_cost" value="{{ step.cost }}" placeholder="{{ t_step_cost }}">
+                  <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+                </div>
+              {% endfor %}
+            </div>
+            <div style="margin-top: 10px;">
+              <button type="button" class="btn" onclick="addArrivalRow()">{{ t_add_row }}</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" style="margin-top: 16px;">
+          <h3>{{ t_checklist_items_label }}</h3>
+          <div class="body">
+            <div class="muted" style="margin-bottom: 12px;">{{ t_checklist_items_hint }}</div>
+            <div id="checklist-container" class="dynamic-list">
+              {% for item in checklist_items %}
+                <div class="dyn-row checklist">
+                  <input type="text" name="checklist_name" value="{{ item.name }}" placeholder="{{ t_checklist_item_name_label }}">
+                  <input type="hidden" name="checklist_done" value="{{ '1' if item.done else '0' }}">
+                  <div class="checkbox-wrap">
+                    <input type="checkbox" {% if item.done %}checked{% endif %} onchange="syncChecklistDone(this)">
+                    <span class="muted">{{ t_checklist_item_done_label }}</span>
+                  </div>
+                  <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+                </div>
+              {% endfor %}
+            </div>
+            <div style="margin-top: 10px;">
+              <button type="button" class="btn" onclick="addChecklistRow()">{{ t_add_row }}</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card links-card" style="margin-top: 16px;">
+          <h3>{{ t_links_of_interest_label }}</h3>
+          <div class="body">
+            <div class="muted" style="margin-bottom: 12px;">{{ t_links_of_interest_hint }}</div>
+            <div id="links-container" class="dynamic-list">
+              {% for link in links_of_interest %}
+                <div class="dyn-row links">
+                  <input type="text" name="link_name" value="{{ link.name }}" placeholder="{{ t_link_name_label }}">
+                  <input type="text" name="link_url" value="{{ link.url }}" placeholder="{{ t_link_url_label }}">
+                  <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+                </div>
+              {% endfor %}
+            </div>
+            <div style="margin-top: 10px;">
+              <button type="button" class="btn" onclick="addLinkRow()">{{ t_add_row }}</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="row-actions" style="margin-top: 18px;">
+          <button type="submit" class="btn primary">{{ t_save }}</button>
+          <a class="btn" href="/">{{ t_cancel }}</a>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<template id="timing-template">
+  <div class="dyn-row timing">
+    <input type="text" name="timing_name" value="" placeholder="{{ t_step_name }}">
+    <input type="number" name="timing_minutes" value="" placeholder="{{ t_step_minutes }}">
+    <input type="text" name="timing_cost" value="" placeholder="{{ t_step_cost }}">
+    <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+  </div>
+</template>
+
+<template id="arrival-template">
+  <div class="dyn-row timing">
+    <input type="text" name="arrival_name" value="" placeholder="{{ t_step_name }}">
+    <input type="number" name="arrival_minutes" value="" placeholder="{{ t_step_minutes }}">
+    <input type="text" name="arrival_cost" value="" placeholder="{{ t_step_cost }}">
+    <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+  </div>
+</template>
+
+<template id="checklist-template">
+  <div class="dyn-row checklist">
+    <input type="text" name="checklist_name" value="" placeholder="{{ t_checklist_item_name_label }}">
+    <input type="hidden" name="checklist_done" value="0">
+    <div class="checkbox-wrap">
+      <input type="checkbox" onchange="syncChecklistDone(this)">
+      <span class="muted">{{ t_checklist_item_done_label }}</span>
+    </div>
+    <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+  </div>
+</template>
+
+<template id="link-template">
+  <div class="dyn-row links">
+    <input type="text" name="link_name" value="" placeholder="{{ t_link_name_label }}">
+    <input type="text" name="link_url" value="" placeholder="{{ t_link_url_label }}">
+    <button type="button" class="small-btn" onclick="removeRow(this)">{{ t_remove }}</button>
+  </div>
+</template>
+
+<script>
+  function addRow(containerId, templateId) {
+    const container = document.getElementById(containerId);
+    const template = document.getElementById(templateId);
+    container.appendChild(template.content.cloneNode(true));
+  }
+  function addTimingRow() { addRow("timing-container", "timing-template"); }
+  function addArrivalRow() { addRow("arrival-container", "arrival-template"); }
+  function addChecklistRow() { addRow("checklist-container", "checklist-template"); }
+  function addLinkRow() { addRow("links-container", "link-template"); }
+  function removeRow(button) { button.closest(".dyn-row").remove(); }
+  function syncChecklistDone(checkbox) {
+    const row = checkbox.closest(".dyn-row");
+    const hidden = row.querySelector('input[type="hidden"][name="checklist_done"]');
+    if (hidden) hidden.value = checkbox.checked ? "1" : "0";
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".checklist input[type='checkbox']").forEach(syncChecklistDone);
+  });
+</script>
+{% endblock %}

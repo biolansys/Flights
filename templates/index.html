@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="shell">
+  <aside class="sidebar">
+    <div class="panel">
+      <h2>{{ t_trip_list }}</h2>
+      <div class="body trip-list">
+        {% for trip in trips %}
+          <a class="trip-item {% if selected_trip and selected_trip.id == trip.id %}active{% endif %}" href="/?trip_id={{ trip.id }}">
+            <span class="title">{{ trip.title or "(untitled)" }}</span>
+            <span class="meta">{{ trip.departure_datetime or t_no_departure }} | {{ trip.departure_airport }} -> {{ trip.arrival_airport }}</span>
+          </a>
+        {% else %}
+          <div class="muted">{{ t_no_trips }}</div>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+
+  <main class="panel">
+    <h2>{{ t_trip_details }}</h2>
+    <div class="body">
+      {% if selected_trip %}
+        <div class="row-actions" style="margin-bottom: 16px;">
+          <a class="btn primary" href="/trip/{{ selected_trip.id }}/edit">{{ t_edit }}</a>
+          <form method="post" action="/trip/{{ selected_trip.id }}/delete" onsubmit="return confirm('{{ delete_confirm }}');" style="display:inline;">
+            <button class="btn danger" type="submit">{{ t_delete }}</button>
+          </form>
+          <form method="post" action="/trip/{{ selected_trip.id }}/status" style="display:inline;">
+            <button class="btn" type="submit">{{ t_refresh_status }}</button>
+          </form>
+        </div>
+
+        <div class="section-list">
+          {% for section in detail.sections %}
+            <section class="card">
+              <h3>{{ section.title }}</h3>
+              <table class="details">
+                <tbody>
+                  {% for row in section.rows %}
+                    <tr>
+                      <th>{{ row.label }}</th>
+                      <td>
+                        {% if row.link_url %}
+                          <a href="{{ row.link_url }}" target="_blank" rel="noopener">{{ row.value }}</a>
+                        {% else %}
+                          {{ row.value }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </section>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="muted">{{ t_select_trip }}</div>
+      {% endif %}
+    </div>
+  </main>
+</div>
+{% endblock %}
