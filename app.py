@@ -16,9 +16,11 @@ import json
 import os
 import re
 import sqlite3
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -54,7 +56,7 @@ OPENSKY_TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-networ
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
 DEFAULT_FLIGHT_PROVIDER = "opensky"
 DEFAULT_LANGUAGE = "en"
-DB_SCHEMA_VERSION = 6
+DB_SCHEMA_VERSION = 7
 
 
 def load_translations() -> dict[str, dict[str, str]]:
@@ -182,6 +184,12 @@ class ChecklistItem:
     done: bool = False
 
 
+@dataclass
+class LinkItem:
+    name: str
+    url: str
+
+
 def parse_timing_steps_text(raw: str) -> tuple[list[TimingStep], list[str]]:
     steps: list[TimingStep] = []
     errors: list[str] = []
@@ -257,6 +265,31 @@ def checklist_items_from_json(raw: str | None) -> list[ChecklistItem]:
 
 
 def checklist_items_to_json(items: Iterable["ChecklistItem"]) -> str:
+    return json.dumps([asdict(item) for item in items], ensure_ascii=False)
+
+
+def links_of_interest_from_json(raw: str | None) -> list[LinkItem]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    items: list[LinkItem] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if not name and not url:
+            continue
+        items.append(LinkItem(name=name, url=url))
+    return items
+
+
+def links_of_interest_to_json(items: Iterable["LinkItem"]) -> str:
     return json.dumps([asdict(item) for item in items], ensure_ascii=False)
 
 
@@ -389,6 +422,17 @@ def severity_cell(message: str) -> Text:
     return Text(message)
 
 
+def summary_label_cell(value: str) -> Text:
+    return Text(value, style="bold")
+
+
+def summary_value_cell(value: str, *, align_right: bool = False, color: str = "", bold: bool = False) -> Text:
+    style = color
+    if bold:
+        style = f"bold {style}".strip()
+    return Text(value, style=style, justify="right" if align_right else "left")
+
+
 def t(language: str, key: str, **kwargs: object) -> str:
     template = TRANSLATIONS.get(language, TRANSLATIONS[DEFAULT_LANGUAGE]).get(
         key,
@@ -475,6 +519,7 @@ class Trip:
     health_items: list[str] = field(default_factory=list)
     documents_to_carry: list[str] = field(default_factory=list)
     other_items: list[str] = field(default_factory=list)
+    links_of_interest: list[LinkItem] = field(default_factory=list)
     general_notes: str = ""
     created_at: str = ""
     updated_at: str = ""
@@ -508,6 +553,7 @@ class Trip:
             health_items=from_json(row["health_items"]),
             documents_to_carry=from_json(row["documents_to_carry"]),
             other_items=from_json(row["other_items"]),
+            links_of_interest=links_of_interest_from_json(row["links_of_interest"] if "links_of_interest" in row.keys() else ""),
             general_notes=row["general_notes"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -540,6 +586,7 @@ class Trip:
             "health_items": to_json(self.health_items),
             "documents_to_carry": to_json(self.documents_to_carry),
             "other_items": to_json(self.other_items),
+            "links_of_interest": links_of_interest_to_json(self.links_of_interest),
             "general_notes": self.general_notes,
             "updated_at": self.updated_at or now_iso(),
         }
@@ -571,6 +618,7 @@ class Trip:
             health_items=list(self.health_items),
             documents_to_carry=list(self.documents_to_carry),
             other_items=list(self.other_items),
+            links_of_interest=[LinkItem(item.name, item.url) for item in self.links_of_interest],
             general_notes=self.general_notes,
             updated_at=now_iso(),
         )
@@ -613,6 +661,7 @@ class TripStore:
         self._ensure_column("ticket_cost", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("timing_steps", "TEXT NOT NULL DEFAULT '[]'")
         self._ensure_column("arrival_timing_steps", "TEXT NOT NULL DEFAULT '[]'")
+        self._ensure_column("links_of_interest", "TEXT NOT NULL DEFAULT '[]'")
         self._migrate_legacy_timing_steps()
         self._migrate_legacy_checklist_items()
         self._drop_legacy_transport_columns()
@@ -650,6 +699,7 @@ class TripStore:
                 health_items TEXT NOT NULL DEFAULT '[]',
                 documents_to_carry TEXT NOT NULL DEFAULT '[]',
                 other_items TEXT NOT NULL DEFAULT '[]',
+                links_of_interest TEXT NOT NULL DEFAULT '[]',
                 general_notes TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -742,6 +792,7 @@ class TripStore:
                 "health_items",
                 "documents_to_carry",
                 "other_items",
+                "links_of_interest",
                 "general_notes",
                 "created_at",
                 "updated_at",
@@ -793,6 +844,7 @@ class TripStore:
                 "health_items",
                 "documents_to_carry",
                 "other_items",
+                "links_of_interest",
                 "general_notes",
                 "created_at",
                 "updated_at",
@@ -868,6 +920,7 @@ class TripStore:
                 health_items = :health_items,
                 documents_to_carry = :documents_to_carry,
                 other_items = :other_items,
+                links_of_interest = :links_of_interest,
                 general_notes = :general_notes,
                 updated_at = :updated_at
             WHERE id = :id
@@ -1041,6 +1094,15 @@ class ChecklistItemListItem(ListItem):
         self.checklist_index = index
 
 
+class LinkItemListItem(ListItem):
+    def __init__(self, item: LinkItem, index: int) -> None:
+        label = item.name.strip() or "(unnamed)"
+        url = item.url.strip() or "(missing url)"
+        line = f"{index + 1}. {label} | {url}"
+        super().__init__(Static(line), id=f"link-item-{index}")
+        self.link_index = index
+
+
 class ConfirmScreen(ModalScreen[bool]):
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
@@ -1131,6 +1193,8 @@ class TripEditorScreen(ModalScreen[Trip | None]):
         self._selected_arrival_timing_step_index: int | None = 0 if self._arrival_timing_steps else None
         self._checklist_items = [ChecklistItem(item.name, item.done) for item in self.trip.checklist_items]
         self._selected_checklist_item_index: int | None = 0 if self._checklist_items else None
+        self._links_of_interest = [LinkItem(item.name, item.url) for item in self.trip.links_of_interest]
+        self._selected_link_index: int | None = 0 if self._links_of_interest else None
 
     def compose(self) -> ComposeResult:
         with Container(id="editor-card"):
@@ -1292,6 +1356,24 @@ class TripEditorScreen(ModalScreen[Trip | None]):
                             self.trip.general_notes,
                             widget="textarea",
                         )
+                with TabPane(t(self.language, "links"), id="editor-links"):
+                    with VerticalScroll(classes="editor-tab"):
+                        yield Label(t(self.language, "links_of_interest_label"))
+                        yield Static(t(self.language, "links_of_interest_hint"), classes="dialog-message")
+                        with Horizontal(classes="links-input-row"):
+                            with Vertical(classes="ticket-field-block"):
+                                yield Label(t(self.language, "link_name_label"))
+                                yield Input(placeholder=t(self.language, "link_name_label"), id="link-name", classes="editor-input")
+                            with Vertical(classes="ticket-field-block"):
+                                yield Label(t(self.language, "link_url_label"))
+                                yield Input(placeholder=t(self.language, "link_url_label"), id="link-url", classes="editor-input")
+                        with Horizontal(classes="dialog-buttons"):
+                            yield Button(t(self.language, "add_link"), variant="primary", id="link-add")
+                            yield Button(t(self.language, "update_link"), variant="default", id="link-update")
+                            yield Button(t(self.language, "remove_link"), variant="warning", id="link-remove")
+                            yield Button(t(self.language, "move_link_up"), variant="default", id="link-up")
+                            yield Button(t(self.language, "move_link_down"), variant="default", id="link-down")
+                        yield ListView(id="links-list")
             yield Static("", id="editor-status")
             with Horizontal(classes="dialog-buttons"):
                 yield Button(t(self.language, "cancel"), variant="default", id="cancel")
@@ -1340,6 +1422,10 @@ class TripEditorScreen(ModalScreen[Trip | None]):
         self.query_one("#checklist-item-name", Input).value = name
         self.query_one("#checklist-item-done", Checkbox).value = done
 
+    def _set_link_inputs(self, name: str = "", url: str = "") -> None:
+        self.query_one("#link-name", Input).value = name
+        self.query_one("#link-url", Input).value = url
+
     async def _refresh_timing_steps_list(self) -> None:
         timing_list = self.query_one("#timing-steps-list", ListView)
         await timing_list.clear()
@@ -1382,8 +1468,41 @@ class TripEditorScreen(ModalScreen[Trip | None]):
             self._selected_checklist_item_index = None
             self._set_checklist_inputs()
 
+    async def _refresh_links_list(self) -> None:
+        links_list = self.query_one("#links-list", ListView)
+        await links_list.clear()
+        for index, item in enumerate(self._links_of_interest):
+            await links_list.append(LinkItemListItem(item, index))
+        if self._links_of_interest and self._selected_link_index is not None:
+            self._selected_link_index = max(0, min(self._selected_link_index, len(self._links_of_interest) - 1))
+            links_list.index = self._selected_link_index
+            item = self._links_of_interest[self._selected_link_index]
+            self._set_link_inputs(item.name, item.url)
+        else:
+            self._selected_link_index = None
+            self._set_link_inputs()
+
     def _set_status(self, message: str) -> None:
         self.query_one("#editor-status", Static).update(message)
+
+    def _finalize_pending_link_input(self) -> str | None:
+        name = self.query_one("#link-name", Input).value.strip()
+        url = self.query_one("#link-url", Input).value.strip()
+        if not name and not url:
+            return None
+        if not url:
+            return t(self.language, "link_requires_url")
+        candidate = LinkItem(name, url)
+        if self._selected_link_index is not None and 0 <= self._selected_link_index < len(self._links_of_interest):
+            current = self._links_of_interest[self._selected_link_index]
+            if current.name == candidate.name and current.url == candidate.url:
+                return None
+            self._links_of_interest.append(candidate)
+            self._selected_link_index = len(self._links_of_interest) - 1
+            return None
+        self._links_of_interest.append(candidate)
+        self._selected_link_index = len(self._links_of_interest) - 1
+        return None
 
     def _collect_trip(self) -> tuple[Trip | None, str | None]:
         errors: list[str] = []
@@ -1433,6 +1552,7 @@ class TripEditorScreen(ModalScreen[Trip | None]):
             health_items=split_items(self._get_input("health_items")),
             documents_to_carry=split_items(self._get_input("documents_to_carry")),
             other_items=split_items(self._get_input("other_items")),
+            links_of_interest=[LinkItem(item.name, item.url) for item in self._links_of_interest],
             general_notes=self._get_textarea("general_notes"),
             created_at=self.trip.created_at,
             updated_at=now_iso(),
@@ -1446,6 +1566,7 @@ class TripEditorScreen(ModalScreen[Trip | None]):
         await self._refresh_timing_steps_list()
         await self._refresh_arrival_timing_steps_list()
         await self._refresh_checklist_items_list()
+        await self._refresh_links_list()
 
     def _selected_timing_item(self, item: ListItem | None) -> None:
         if item is None:
@@ -1476,6 +1597,16 @@ class TripEditorScreen(ModalScreen[Trip | None]):
         self._selected_checklist_item_index = checklist_index
         checklist_item = self._checklist_items[checklist_index]
         self._set_checklist_inputs(checklist_item.name, checklist_item.done)
+
+    def _selected_link_item(self, item: ListItem | None) -> None:
+        if item is None:
+            return
+        link_index = getattr(item, "link_index", None)
+        if link_index is None:
+            return
+        self._selected_link_index = link_index
+        link_item = self._links_of_interest[link_index]
+        self._set_link_inputs(link_item.name, link_item.url)
 
     async def _add_or_update_timing_step(self, *, update_existing: bool) -> None:
         name = self.query_one("#timing-step-name", Input).value.strip()
@@ -1598,6 +1729,48 @@ class TripEditorScreen(ModalScreen[Trip | None]):
         self._selected_checklist_item_index = new_index
         await self._refresh_checklist_items_list()
 
+    async def _add_or_update_link(self, *, update_existing: bool) -> None:
+        name = self.query_one("#link-name", Input).value.strip()
+        url = self.query_one("#link-url", Input).value.strip()
+        if not name and not url:
+            self._set_status(t(self.language, "link_requires_values"))
+            return
+        if not url:
+            self._set_status(t(self.language, "link_requires_url"))
+            return
+        if update_existing:
+            if self._selected_link_index is None:
+                self._set_status(t(self.language, "select_link_first"))
+                return
+            self._links_of_interest[self._selected_link_index] = LinkItem(name, url)
+        else:
+            self._links_of_interest.append(LinkItem(name, url))
+            self._selected_link_index = len(self._links_of_interest) - 1
+        await self._refresh_links_list()
+
+    async def _remove_link(self) -> None:
+        if self._selected_link_index is None:
+            self._set_status(t(self.language, "select_link_first"))
+            return
+        del self._links_of_interest[self._selected_link_index]
+        if not self._links_of_interest:
+            self._selected_link_index = None
+        else:
+            self._selected_link_index = min(self._selected_link_index, len(self._links_of_interest) - 1)
+        await self._refresh_links_list()
+
+    async def _move_link(self, delta: int) -> None:
+        if self._selected_link_index is None:
+            self._set_status(t(self.language, "select_link_first"))
+            return
+        new_index = self._selected_link_index + delta
+        if new_index < 0 or new_index >= len(self._links_of_interest):
+            return
+        item = self._links_of_interest.pop(self._selected_link_index)
+        self._links_of_interest.insert(new_index, item)
+        self._selected_link_index = new_index
+        await self._refresh_links_list()
+
     def action_cancel(self) -> None:
         self.dismiss(None)
 
@@ -1609,6 +1782,10 @@ class TripEditorScreen(ModalScreen[Trip | None]):
                 pass
 
     def action_save(self) -> None:
+        link_error = self._finalize_pending_link_input()
+        if link_error:
+            self._set_status(f"[b][red]Fix the following:[/red][/b] {link_error}")
+            return
         trip, error = self._collect_trip()
         if error:
             self._set_status(f"[b][red]Fix the following:[/red][/b] {error}")
@@ -1622,6 +1799,8 @@ class TripEditorScreen(ModalScreen[Trip | None]):
             self._selected_arrival_timing_item(event.item)
         elif event.list_view.id == "checklist-items-list":
             self._selected_checklist_item(event.item)
+        elif event.list_view.id == "links-list":
+            self._selected_link_item(event.item)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.list_view.id == "timing-steps-list":
@@ -1630,6 +1809,8 @@ class TripEditorScreen(ModalScreen[Trip | None]):
             self._selected_arrival_timing_item(event.item)
         elif event.list_view.id == "checklist-items-list":
             self._selected_checklist_item(event.item)
+        elif event.list_view.id == "links-list":
+            self._selected_link_item(event.item)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
@@ -1666,6 +1847,16 @@ class TripEditorScreen(ModalScreen[Trip | None]):
             await self._move_checklist_item(-1)
         elif event.button.id == "checklist-down":
             await self._move_checklist_item(1)
+        elif event.button.id == "link-add":
+            await self._add_or_update_link(update_existing=False)
+        elif event.button.id == "link-update":
+            await self._add_or_update_link(update_existing=True)
+        elif event.button.id == "link-remove":
+            await self._remove_link()
+        elif event.button.id == "link-up":
+            await self._move_link(-1)
+        elif event.button.id == "link-down":
+            await self._move_link(1)
 
 
 class TripAdminApp(App[None]):
@@ -1749,6 +1940,18 @@ class TripAdminApp(App[None]):
     }
 
     .timing-section-title {
+        text-style: bold;
+        color: $accent-lighten-1;
+        margin-bottom: 1;
+    }
+
+    .summary-section {
+        border: round $accent 30%;
+        padding: 0 1 1 1;
+        margin-bottom: 1;
+    }
+
+    .summary-section-title {
         text-style: bold;
         color: $accent-lighten-1;
         margin-bottom: 1;
@@ -1856,6 +2059,10 @@ class TripAdminApp(App[None]):
         height: auto;
     }
 
+    .links-input-row {
+        height: auto;
+    }
+
     #checklist-item-name {
         width: 3fr;
     }
@@ -1896,6 +2103,9 @@ class TripAdminApp(App[None]):
         self.store = TripStore(DB_PATH)
         self._filter_text = ""
         self._selected_trip_id: int | None = None
+        self._last_summary_link_row: int | None = None
+        self._last_summary_link_click_at: float = 0.0
+        self._summary_link_row_map: dict[int, int] = {}
         self._flight_status_cache: dict[int, FlightStatusResult] = {}
         self._status_log: list[str] = []
         self.flight_provider = self._build_flight_provider()
@@ -1974,7 +2184,6 @@ class TripAdminApp(App[None]):
                             yield DataTable(id="notes-view")
                     with TabPane(t(self.language, "summary"), id="summary"):
                         with VerticalScroll(classes="detail-pane"):
-                            yield Static(t(self.language, "summary_panel_title"), id="summary-title", classes="table-title")
                             yield DataTable(id="summary-view")
                     with TabPane(t(self.language, "log"), id="log"):
                         with VerticalScroll(classes="detail-pane"):
@@ -2096,6 +2305,7 @@ class TripAdminApp(App[None]):
             "flight": t(self.language, "flight"),
             "checklist": t(self.language, "checklist"),
             "notes": t(self.language, "notes"),
+            "links": t(self.language, "links"),
             "summary": t(self.language, "summary"),
             "log": t(self.language, "log"),
         }
@@ -2267,22 +2477,63 @@ class TripAdminApp(App[None]):
         ] or [(t(self.language, "checklist_items_label"), warning_cell("(none)"))]
         notes_rows = [(t(self.language, "notes_label"), trip.general_notes.strip() if trip.general_notes.strip() else "(none)")]
         trip_total_cost = total_trip_cost(trip)
-        summary_rows = [
-            (t(self.language, "trip_label"), value_or_none(trip.title)),
-            (t(self.language, "passenger_label"), value_or_none(trip.passenger_name)),
-            (t(self.language, "route_label"), f"{value_or_none(trip.departure_airport)} -> {value_or_none(trip.arrival_airport)}"),
-            (t(self.language, "departure_label"), value_or_none(trip.departure_datetime)),
-            (t(self.language, "flight_arrival_time_label"), value_or_none(trip.flight_arrival_time)),
-            (t(self.language, "flight_label"), value_or_none(f"{trip.airline_code}{trip.flight_number}".strip())),
-            (t(self.language, "airline"), value_or_none(trip.airline)),
-            (t(self.language, "booking_reference"), value_or_none(trip.booking_reference)),
-            (t(self.language, "ticket_cost"), right_text(value_or_none(trip.ticket_cost), "cyan")),
-            (t(self.language, "total_cost_label"), right_text(format_cost(trip_total_cost), "bold cyan") if trip_total_cost is not None else "(none)"),
-            (t(self.language, "checkin_label"), status_cell(self.language, trip.checkin_done)),
-            (t(self.language, "checklist_progress_label"), f"{completed_steps}/{total_checklist_items} completed"),
-            (t(self.language, "required_documentation_label"), multiline_or_none(trip.documentation_required)),
-            (t(self.language, "packing_snapshot_label"), f"{t(self.language, 'clothes_label')} {len(trip.clothes_items)} | {t(self.language, 'electronics_label')} {len(trip.electronics_items)} | {t(self.language, 'health_label')} {len(trip.health_items)} | {t(self.language, 'other_items_label')} {len(trip.other_items)}"),
-        ]
+        summary_rows: list[tuple[object, object]] = []
+        self._summary_link_row_map = {}
+
+        def add_section(title: str) -> None:
+            summary_rows.append((Text(title, style="bold"), Text("", style="dim")))
+
+        def add_row(label: str, value: object) -> None:
+            summary_rows.append((Text(label), value))
+
+        add_section(t(self.language, "overview_panel_title"))
+        add_row(t(self.language, "trip_label"), value_or_none(trip.title))
+        add_row(t(self.language, "route_label"), f"{value_or_none(trip.departure_airport)} -> {value_or_none(trip.arrival_airport)}")
+        add_row(t(self.language, "departure_label"), value_or_none(trip.departure_datetime))
+        add_row(t(self.language, "flight_arrival_time_label"), value_or_none(trip.flight_arrival_time))
+        add_row(t(self.language, "created_at_label"), value_or_none(trip.created_at))
+        add_row(t(self.language, "updated_at_label"), value_or_none(trip.updated_at))
+
+        add_section(t(self.language, "ticket_panel_title"))
+        add_row(t(self.language, "passenger_label"), value_or_none(trip.passenger_name))
+        add_row(t(self.language, "checkin_label"), status_cell(self.language, trip.checkin_done))
+        add_row(t(self.language, "flight_label"), value_or_none(f"{trip.airline_code}{trip.flight_number}".strip()))
+        add_row(t(self.language, "airline"), value_or_none(trip.airline))
+        add_row(t(self.language, "booking_reference"), value_or_none(trip.booking_reference))
+        add_row(t(self.language, "ticket_number"), value_or_none(trip.ticket_number))
+        add_row(t(self.language, "ticket_cost"), value_or_none(trip.ticket_cost))
+        add_row(t(self.language, "total_cost_label"), format_cost(trip_total_cost) if trip_total_cost is not None else "(none)")
+
+        add_section(t(self.language, "docs_panel_title"))
+        add_row(t(self.language, "required_documentation_label"), multiline_or_none(trip.documentation_required))
+        add_row(t(self.language, "documents_to_carry"), multiline_or_none(trip.documents_to_carry))
+
+        add_section(t(self.language, "timing_panel_title"))
+        add_row(t(self.language, "estimated_safe_leave_home"), safe_leave_home or t(self.language, "timing_estimate_unavailable"))
+        add_row(t(self.language, "total_timing_buffer_label"), format_minutes(timing_total_minutes) if timing_total_minutes is not None else "(none)")
+        add_row(t(self.language, "arrival_total_timing_label"), format_minutes(arrival_timing_total_minutes) if arrival_timing_total_minutes is not None else "(none)")
+        add_row(t(self.language, "estimated_home_arrival"), estimated_home_arrive or t(self.language, "arrival_timing_estimate_unavailable"))
+
+        add_section(t(self.language, "packing_panel_title"))
+        add_row(t(self.language, "clothes_label"), multiline_or_none(trip.clothes_items))
+        add_row(t(self.language, "electronics_label"), multiline_or_none(trip.electronics_items))
+        add_row(t(self.language, "health_label"), multiline_or_none(trip.health_items))
+        add_row(t(self.language, "other_items_label"), multiline_or_none(trip.other_items))
+        add_row(t(self.language, "packing_snapshot_label"), f"{t(self.language, 'clothes_label')} {len(trip.clothes_items)} | {t(self.language, 'electronics_label')} {len(trip.electronics_items)} | {t(self.language, 'health_label')} {len(trip.health_items)} | {t(self.language, 'other_items_label')} {len(trip.other_items)}")
+
+        add_section(t(self.language, "checklist_panel_title"))
+        add_row(t(self.language, "checklist_progress_label"), f"{completed_steps}/{total_checklist_items} completed")
+        for item in trip.checklist_items:
+            add_row(item.name, status_cell(self.language, item.done))
+
+        add_section(t(self.language, "links_of_interest_label"))
+        if trip.links_of_interest:
+            for index, item in enumerate(trip.links_of_interest):
+                row_index = len(summary_rows)
+                self._summary_link_row_map[row_index] = index
+                add_row(f"  {item.name.strip() or t(self.language, 'unnamed_link_label')}", item.url.strip() or "(none)")
+        else:
+            add_row(t(self.language, "links_of_interest_label"), "(none)")
 
         self._update_table("overview-view", overview_rows)
         self._update_table("ticket-view", ticket_rows)
@@ -2321,6 +2572,37 @@ class TripAdminApp(App[None]):
             "",
             *cached.lines,
         ]
+
+    def _handle_summary_link_row_selected(self, row_index: int) -> None:
+        trip = self._current_trip()
+        if trip is None:
+            self._set_status(t(self.language, "select_trip_first"))
+            return
+        link_index = self._summary_link_row_map.get(row_index)
+        if link_index is None or link_index < 0 or link_index >= len(trip.links_of_interest):
+            return
+        now = time.monotonic()
+        if self._last_summary_link_row != row_index or now - self._last_summary_link_click_at > 0.55:
+            self._last_summary_link_row = row_index
+            self._last_summary_link_click_at = now
+            self._set_status(t(self.language, "double_click_link_hint"))
+            return
+
+        self._last_summary_link_row = None
+        self._last_summary_link_click_at = 0.0
+        url = trip.links_of_interest[link_index].url.strip()
+        if not url:
+            self._set_status(t(self.language, "link_requires_url"))
+            return
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+            url = f"https://{url}"
+        opened = webbrowser.open(url)
+        if opened:
+            self._set_status(t(self.language, "link_opened_status", url=url))
+            self._append_status_log(t(self.language, "link_opened_log", url=url))
+        else:
+            self._set_status(t(self.language, "link_open_failed_status", url=url))
+            self._append_status_log(t(self.language, "link_open_failed_log", url=url))
 
     async def _refresh_flight_status_for_trip(self, trip: Trip) -> None:
         result = await asyncio.to_thread(self.flight_provider.fetch, trip)
@@ -2495,15 +2777,19 @@ class TripAdminApp(App[None]):
         self._select_trip_from_item(event.item)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id != "checklist-view":
-            return
         try:
             tabs = self.query_one("#trip-tabs", TabbedContent)
         except Exception:
             return
-        if tabs.active != "checklist":
+        if event.data_table.id == "checklist-view":
+            if tabs.active != "checklist":
+                return
+            self.run_worker(self.action_toggle_checklist_item(), name="toggle-checklist-row")
             return
-        self.run_worker(self.action_toggle_checklist_item(), name="toggle-checklist-row")
+        if event.data_table.id == "summary-view":
+            if tabs.active != "summary":
+                return
+            self._handle_summary_link_row_selected(event.cursor_row)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id

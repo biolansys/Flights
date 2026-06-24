@@ -26,17 +26,24 @@ python gui_app.py
 - Query live flight status from the internet
 - Store ticket details
 - Track required documentation
-- Record timing buffers and estimate a safe leave-home time
+- Track checklist items dynamically
+- Record departure and arrival timing buffers and estimate safe leave-home and home-arrival times
 - Maintain packing lists for clothes, electronics, health items, documents, and other items
+- Store a dynamic list of useful links of interest for each trip
+- Show a grouped trip summary with sections for overview, ticket, docs, timing, packing, checklist, and links
 
 ## Shortcuts
 
 - `n`: new trip
 - `e`: edit selected trip
+- `c`: duplicate selected trip
 - `d`: delete selected trip
+- `x` or `Enter`: toggle checklist item when the checklist tab is active
 - `s`: refresh live flight status
 - `r`: refresh list
 - `f`: focus the filter box
+- `l`: change language
+- `i`: show app info
 - `q`: quit
 
 ## Storage
@@ -73,6 +80,27 @@ python app.py
 ```
 
 Current limitation: the OpenSky free REST API is best for current live aircraft state by callsign. It is not as rich as commercial schedule/status APIs for historical or gate-level airline status.
+
+## Summary View
+
+The TUI summary tab is organized into grouped sections:
+
+- Overview
+- Ticket details
+- Documentation
+- Timing
+- Packing
+- Checklist
+- Links of interest
+
+The links section is interactive. In the TUI, double-click a link row to open it in the system default browser.
+
+## Editing Notes
+
+- Timing steps are editable as dynamic lists.
+- Checklist items are editable as dynamic lists.
+- Links of interest are editable as a dynamic list of name + URL pairs.
+- Ticket notes and general notes support multi-line editing.
 
 ## Provider Architecture
 

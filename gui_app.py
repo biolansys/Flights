@@ -45,6 +45,7 @@ from app import (
     DEFAULT_LANGUAGE,
     ChecklistItem,
     FlightStatusResult,
+    LinkItem,
     OpenSkyFlightProvider,
     PlaceholderScheduleValidationProvider,
     TimingStep,
@@ -114,6 +115,7 @@ EDITOR_TABS: list[tuple[str, list[str]]] = [
     ("packing", ["clothes_items", "electronics_items", "health_items", "other_items"]),
     ("checklist", ["checklist_items"]),
     ("notes", ["general_notes"]),
+    ("links", ["links_of_interest"]),
 ]
 
 
@@ -477,6 +479,108 @@ class ChecklistItemsEditor(QWidget):
         return items, errors
 
 
+class LinksEditor(QWidget):
+    def __init__(self, language: str, items: list[LinkItem] | None = None) -> None:
+        super().__init__()
+        self.language = language
+        layout = QVBoxLayout(self)
+        controls = QHBoxLayout()
+        add_button = QPushButton(t(language, "add_link"))
+        update_button = QPushButton(t(language, "update_link"))
+        remove_button = QPushButton(t(language, "remove_link"))
+        up_button = QPushButton(t(language, "move_link_up"))
+        down_button = QPushButton(t(language, "move_link_down"))
+        add_button.clicked.connect(self.add_row)
+        update_button.clicked.connect(self.update_current_row)
+        remove_button.clicked.connect(self.remove_current_row)
+        up_button.clicked.connect(lambda: self.move_current_row(-1))
+        down_button.clicked.connect(lambda: self.move_current_row(1))
+        controls.addWidget(add_button)
+        controls.addWidget(update_button)
+        controls.addWidget(remove_button)
+        controls.addWidget(up_button)
+        controls.addWidget(down_button)
+        controls.addStretch(1)
+        layout.addLayout(controls)
+
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels([t(language, "link_name_label"), t(language, "link_url_label")])
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.table.setDragEnabled(True)
+        self.table.setAcceptDrops(True)
+        self.table.viewport().setAcceptDrops(True)
+        self.table.setDropIndicatorShown(True)
+        self.table.setDragDropOverwriteMode(False)
+        layout.addWidget(self.table, 1)
+
+        hint = QLabel(t(language, "links_of_interest_hint"))
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #7c6a58;")
+        layout.addWidget(hint)
+
+        for item in items or []:
+            self.add_row(item.name, item.url)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    def add_row(self, name: str = "", url: str = "") -> None:
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        self.table.setItem(row, 0, QTableWidgetItem(name))
+        self.table.setItem(row, 1, QTableWidgetItem(url))
+
+    def remove_current_row(self) -> None:
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+
+    def update_current_row(self) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        for column in range(2):
+            item = self.table.item(row, column)
+            if item is not None:
+                item.setText(item.text().strip())
+
+    def move_current_row(self, delta: int) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        new_row = row + delta
+        if new_row < 0 or new_row >= self.table.rowCount():
+            return
+        row_values = [
+            (self.table.item(row, column).text() if self.table.item(row, column) else "")
+            for column in range(2)
+        ]
+        self.table.removeRow(row)
+        self.table.insertRow(new_row)
+        for column, value in enumerate(row_values):
+            self.table.setItem(new_row, column, QTableWidgetItem(value))
+        self.table.setCurrentCell(new_row, 0)
+
+    def get_items(self) -> tuple[list[LinkItem], list[str]]:
+        items: list[LinkItem] = []
+        errors: list[str] = []
+        for row in range(self.table.rowCount()):
+            name_item = self.table.item(row, 0)
+            url_item = self.table.item(row, 1)
+            name = (name_item.text() if name_item else "").strip()
+            url = (url_item.text() if url_item else "").strip()
+            if not name and not url:
+                continue
+            if not url:
+                errors.append(f"Link row {row + 1} requires a URL")
+                continue
+            items.append(LinkItem(name=name, url=url))
+        return items, errors
+
+
 class TripEditorDialog(QDialog):
     def __init__(self, language: str, trip: Trip | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -531,6 +635,8 @@ class TripEditorDialog(QDialog):
             return TimingStepsEditor(self.language, current)
         if field_name == "checklist_items":
             return ChecklistItemsEditor(self.language, current)
+        if field_name == "links_of_interest":
+            return LinksEditor(self.language, current)
         if field_name in CHECKBOX_FIELDS:
             widget = QCheckBox(self._field_label(field_name))
             widget.setChecked(bool(current))
@@ -564,6 +670,9 @@ class TripEditorDialog(QDialog):
 
     def _checklist_items(self) -> tuple[list[ChecklistItem], list[str]]:
         return self.widgets["checklist_items"].get_items()  # type: ignore[union-attr]
+
+    def _links_of_interest(self) -> tuple[list[LinkItem], list[str]]:
+        return self.widgets["links_of_interest"].get_items()  # type: ignore[union-attr]
 
     def _required(self, field_name: str, label: str, errors: list[str]) -> str:
         value = self._line(field_name)
@@ -612,6 +721,7 @@ class TripEditorDialog(QDialog):
             electronics_items=split_items(self._text("electronics_items")),
             health_items=split_items(self._text("health_items")),
             other_items=split_items(self._text("other_items")),
+            links_of_interest=[],
             general_notes=self._text("general_notes"),
             created_at=self.trip.created_at,
             updated_at=now_iso(),
@@ -623,6 +733,9 @@ class TripEditorDialog(QDialog):
         checklist_items, checklist_errors = self._checklist_items()
         errors.extend(checklist_errors)
         trip.checklist_items = checklist_items
+        links_of_interest, links_errors = self._links_of_interest()
+        errors.extend(links_errors)
+        trip.links_of_interest = links_of_interest
         if errors:
             self.error_label.setText("; ".join(errors))
             return None
@@ -1130,6 +1243,14 @@ class TripAdminGui(QMainWindow):
             or [(make_item(t(self.language, "checklist_items_label")), make_item("(none)"))],
         )
         self._fill_table("notes", [(make_item(t(self.language, "notes_label")), make_item(trip.general_notes.strip() if trip.general_notes.strip() else "(none)"))])
+        summary_link_rows = [
+            (
+                make_item(f"  {item.name.strip() or t(self.language, 'unnamed_link_label')}"),
+                make_item(item.url.strip() or "(none)"),
+            )
+            for item in trip.links_of_interest
+        ] or [(make_item(f"  {t(self.language, 'links_of_interest_label')}"), make_item("(none)"))]
+
         self._fill_table(
             "summary",
             [
@@ -1147,6 +1268,8 @@ class TripAdminGui(QMainWindow):
                 (make_item(t(self.language, "checklist_progress_label")), make_item(f"{completed_steps}/{total_checklist_items} completed")),
                 (make_item(t(self.language, "required_documentation_label")), make_item(lines_or_none(trip.documentation_required))),
                 (make_item(t(self.language, "packing_snapshot_label")), make_item(f"{t(self.language, 'clothes_label')} {len(trip.clothes_items)} | {t(self.language, 'electronics_label')} {len(trip.electronics_items)} | {t(self.language, 'health_label')} {len(trip.health_items)} | {t(self.language, 'other_items_label')} {len(trip.other_items)}")),
+                (make_item(t(self.language, "links_of_interest_label"), bold=True), make_item("")),
+                *summary_link_rows,
             ],
         )
         if self._status_log:
